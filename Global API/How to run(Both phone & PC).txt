@@ -1,0 +1,29 @@
+open terminal and paste:
+cd "D:\NSU Course\2026\CSE 499A\New Try\Dataset 2025\Global API"
+
+paste this:
+.\run.ps1
+
+
+paste this on browser:
+ http://127.0.0.1:8000
+
+
+paste this on browser:
+https://unmindful-handoff-erratic.ngrok-free.dev/
+
+
+
+################################################################################################################################
+################################################################################################################################
+
+
+open terminal and paste:
+cd "D:\NSU Course\2026\CSE 499A\New Try\Dataset 2025\Global API"
+   .\expose.ps1
+
+
+
+paste this on browser:
+https://unmindful-handoff-erratic.ngrok-free.dev/
+

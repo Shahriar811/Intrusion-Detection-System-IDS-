@@ -1,0 +1,320 @@
+GLOBAL API ACCESS — STEP BY STEP (CSE499A IDS for SDN-IoT)
+================================================================
+
+GOAL
+----
+Turn the trained models that already live in the project's "Saved models"
+folder into a real HTTP API + a friendly web UI, and (optionally) expose
+both to the public internet over HTTPS so they can be used from:
+  - Any web browser at <public-url>/
+  - A phone on mobile data
+  - Another laptop on a different network
+  - Any teammate with the URL
+
+This folder is fully self-contained — it does not depend on the reference
+project at "D:\CSE498 Research Updated\API Global" anymore. It includes:
+
+  - A FastAPI server that loads:
+      * Deep_Learning\*.keras         (DNN, DQN, FCN, FL_DNN, FL_LeNet,
+                                       GRU, LeNet, LSTM)
+      * Traditional_ML\*.joblib       (random forest, xgboost, lightgbm)
+      * scaler.joblib + label_encoder.joblib + feature_cols.joblib
+        + model_info.json from "..\Saved models".
+  - A single-page web UI at "/" with two input modes:
+      * Drag-and-drop / click-to-upload CSV (batch, up to 200 rows)
+      * Comma-separated feature paste box (single-row prediction)
+    Results show a color-coded class badge, confidence bar, top-K
+    probabilities, and (for batch) a per-class summary + scrollable table.
+  - PowerShell scripts to run it locally and to open a public ngrok tunnel.
+
+
+WHY NGROK?
+----------
+- Free
+- Gives HTTPS automatically (browsers / Android prefer this)
+- No need to open router ports or buy a domain
+- Public URL starts working in under a minute
+
+Downside (free plan):
+- Each time you restart, you get a new random URL like
+  https://abcd-1234.ngrok-free.app
+  For a permanent URL, see Section 7 at the bottom.
+
+
+PREREQUISITES
+-------------
+- Windows 10/11, PowerShell available.
+- Python 3.11 (64-bit) installed and reachable via the "py" launcher.
+  TensorFlow wheels are flaky on Python 3.13 — 3.11 is the safe bet.
+- The folder "..\Saved models" already exists and contains:
+    * Deep_Learning\*.keras
+    * Traditional_ML\*.joblib
+    * model_info.json
+    * feature_cols.joblib
+    * label_encoder.joblib
+    * scaler.joblib
+- Internet access on this PC (only for ngrok).
+
+
+================================================================
+STEP 1  —  Run the API locally first (quick sanity check)
+================================================================
+Open PowerShell and run:
+
+    cd "D:\NSU Course\2026\CSE 499A\New Try\Dataset 2025\Global API"
+    .\run.ps1
+
+What happens:
+  1. A virtualenv is created in .\.venv (first run only).
+  2. requirements.txt is installed (FastAPI, TensorFlow, scikit-learn, etc.).
+     This step is large the first time — TensorFlow alone is ~500 MB.
+  3. uvicorn starts the FastAPI app at http://127.0.0.1:8000.
+
+Once you see "Uvicorn running on http://127.0.0.1:8000", open in a browser:
+
+    http://127.0.0.1:8000/        <- the WEB UI (recommended)
+    http://127.0.0.1:8000/docs    <- interactive Swagger UI
+    http://127.0.0.1:8000/models  <- the list of all 11 saved models (JSON)
+    http://127.0.0.1:8000/health  <- liveness probe
+
+If /models returns an empty list, the API can't find your saved models.
+Check that "..\Saved models\Deep_Learning" and "..\Saved models\Traditional_ML"
+both exist and contain files. If your models live elsewhere, set:
+
+    $env:MODEL_DIR = "C:\full\path\to\Saved models"
+    .\run.ps1
+
+
+================================================================
+STEP 2  —  Try a prediction locally (optional but useful)
+================================================================
+Option A — from the WEB UI (recommended):
+
+  1. Open http://127.0.0.1:8000/
+  2. Pick a model from the dropdown (e.g. random_forest.joblib).
+  3. EITHER:
+       a) drag a CSV onto the upload box (or click to pick), OR
+       b) paste 42 comma-separated numbers into the textarea.
+  4. Click "Run Prediction". You'll see a colored class badge, the
+     confidence bar, and the top-K probabilities. For CSV uploads you
+     also get a per-class summary plus a scrollable table.
+
+Option B — from the Swagger /docs page:
+
+  1. Open http://127.0.0.1:8000/docs
+  2. Expand POST /predict -> "Try it out".
+  3. Fill `model_id` (e.g. random_forest.joblib) and EITHER `file`
+     (upload a CSV) OR `features` (a comma-separated string).
+  4. Hit "Execute".
+
+Option C — from a real CSV using the included client:
+
+    cd "D:\NSU Course\2026\CSE 499A\New Try\Dataset 2025\Global API"
+    .\.venv\Scripts\activate
+    pip install requests pandas
+    python client_example.py --api http://127.0.0.1:8000 --list
+    python client_example.py --api http://127.0.0.1:8000 `
+        --model-id random_forest.joblib `
+        --csv "..\ASEADOS_SDN_IoT.csv"
+
+
+================================================================
+STEP 3  —  Create a free ngrok account (one-time, ~2 minutes)
+================================================================
+1. Open: https://dashboard.ngrok.com/signup
+2. Sign up (email + password, or GitHub/Google).
+3. After login, open:
+     https://dashboard.ngrok.com/get-started/your-authtoken
+4. Copy the long token shown there (it looks like:
+   2abCdEfGh1234567890IJKLMN_abCDefGhiJkLmNoPqRsTuVwX).
+
+
+================================================================
+STEP 4  —  Paste the token into a file
+================================================================
+1. In this folder, create a new text file named exactly:
+       ngrok_token.txt
+   (You can copy ngrok_token.txt.example and rename it.)
+2. Open it with Notepad, paste the token as the only content, save.
+
+NOTE: This file is private. Do not commit it to git or share it.
+The provided .gitignore already excludes it.
+
+
+================================================================
+STEP 5  —  Run the one-click "expose" script
+================================================================
+Open PowerShell and run:
+
+    cd "D:\NSU Course\2026\CSE 499A\New Try\Dataset 2025\Global API"
+    .\expose.ps1
+
+What the script does automatically:
+  1. Reads ngrok_token.txt.
+  2. Downloads ngrok.exe if missing.
+  3. Registers your authtoken with ngrok.
+  4. Detects if the API is already running on 127.0.0.1:8000.
+     If not, it spawns a SECOND PowerShell window that runs run.ps1
+     (so the API is bound only to localhost — the public path is via ngrok).
+  5. Waits up to ~6 minutes for the API to come up (TensorFlow + the
+     LSTM model take a while to load on the first request).
+  6. Opens a public HTTPS tunnel in the current window and prints the URL.
+
+
+================================================================
+STEP 6  —  Grab your public URL
+================================================================
+After a few seconds you will see ngrok output like:
+
+    Session Status     online
+    Forwarding         https://abcd-1234.ngrok-free.app -> http://localhost:8000
+
+Copy that "https://....ngrok-free.app" URL.
+
+Test it from anywhere (phone on mobile data, another laptop, etc.):
+
+    https://abcd-1234.ngrok-free.app/         <- the WEB UI
+    https://abcd-1234.ngrok-free.app/docs     <- interactive API docs
+    https://abcd-1234.ngrok-free.app/models   <- list of loaded models (JSON)
+
+To predict from another machine via the command line:
+
+    python client_example.py --api https://abcd-1234.ngrok-free.app `
+        --model-id lstm_model.keras `
+        --csv "ASEADOS_SDN_IoT.csv"
+
+
+================================================================
+STEP 7  —  Stopping the server
+================================================================
+Option A (graceful):
+  - Press Ctrl+C in the ngrok window to stop the public tunnel.
+  - Press Ctrl+C in the API window to stop the API.
+
+Option B (force stop everything):
+
+    cd "D:\NSU Course\2026\CSE 499A\New Try\Dataset 2025\Global API"
+    .\stop.ps1
+
+
+================================================================
+STEP 8  —  Common issues
+================================================================
+
+Q: /models returns [].
+A: The server can't see "..\Saved models". Either move/restore that folder
+   or set MODEL_DIR before running run.ps1:
+       $env:MODEL_DIR = "D:\full\path\to\Saved models"
+       .\run.ps1
+
+Q: TensorFlow / Keras fails to install.
+A: You probably have only Python 3.13. Install Python 3.11 (64-bit), make
+   sure "py -3.11 --version" works in PowerShell, then delete .\.venv and
+   re-run .\run.ps1 (it will rebuild the venv with Python 3.11).
+
+Q: A keras model errors with "expected shape ... got ...".
+A: The model_loader auto-reshapes (batch, 42) into the shape each model
+   wants. If a custom model fails, open server/model_loader.py and adjust
+   the _reshape_for_keras() function.
+
+Q: The ngrok URL changes every time I restart.
+A: Yes, that's the free plan. Two options to get a permanent URL:
+     1. ngrok paid plan (static domain), or
+     2. Cloudflare Tunnel (free, but needs a domain on Cloudflare).
+   See "PERMANENT URL" below.
+
+Q: ngrok shows a warning page before the API.
+A: That's the free-plan browser warning (visit-count page). It does NOT
+   block API calls from clients/scripts. Click "Visit Site" once in a
+   browser to bypass it manually.
+
+Q: My PC sleeps / I shut down my laptop.
+A: The URL stops working until you run expose.ps1 again. For 24/7 uptime,
+   deploy to a VPS (see "RUN 24/7" below).
+
+Q: I want to change the port.
+A: Set $env:API_PORT = "9000" before running .\run.ps1, and edit the $PORT
+   variable at the top of expose.ps1 to match.
+
+
+================================================================
+PERMANENT URL (optional, more advanced)
+================================================================
+If you want the SAME URL every time (e.g. https://api.yoursite.com),
+the free path is Cloudflare Tunnel:
+
+  1. Buy or already own a domain (even a cheap $2 one works).
+  2. Move its DNS to Cloudflare (free).
+  3. Install 'cloudflared' on your PC.
+  4. Run:  cloudflared tunnel login
+  5. Run:  cloudflared tunnel create cse499a
+  6. Map a subdomain (e.g. ids-api.yoursite.com) to
+     http://localhost:8000 via config.yml.
+  7. Run:  cloudflared tunnel run cse499a
+
+Result: https://ids-api.yoursite.com/  works from anywhere, permanently
+        (as long as your PC is running).
+
+
+================================================================
+RUN 24/7 (optional, recommended for production)
+================================================================
+If you want the API online even when your laptop is off, put it on a
+cheap Linux VPS (Hetzner / DigitalOcean / Contabo / etc., ~$4-6 / month):
+
+  1. Copy this "Global API" folder AND the project's "Saved models"
+     folder to the VPS, side by side, so the relative path
+     "../Saved models" still resolves.
+  2. Install Python 3.11, then:
+       pip install -r requirements.txt
+  3. Run:
+       MODEL_DIR=/path/to/Saved\ models \
+         python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+  4. Put Caddy or Nginx in front for free HTTPS (auto Let's Encrypt).
+  5. Use that public URL in clients.
+
+At that point you don't need ngrok anymore — you have a real production URL.
+
+
+================================================================
+ENDPOINTS REFERENCE
+================================================================
+
+The API surface is intentionally small. The web UI at "/" calls
+"/predict" under the hood; everything else is for programmatic clients.
+
+GET  /            Web UI (HTML). Drag-and-drop CSV upload + paste-features
+                  textarea. Color-coded results with confidence bars.
+
+GET  /models      JSON list of every loadable model with framework, family,
+                  num_classes, class_names, and (for Keras) input_shape.
+
+POST /predict     multipart/form-data. Fields:
+                    model_id  (required) - one of the IDs from /models
+                    file      (optional) - CSV upload, batch (<= 200 rows)
+                    features  (optional) - comma-separated string,
+                                            single-row prediction
+                    top_k     (optional) - int, default 5
+                  Provide EITHER `file` OR `features`, not both.
+                  Returns:
+                    {
+                      "model_id": "...",
+                      "num_rows": N,
+                      "predictions": [
+                        { "pred_class_id": int,
+                          "pred_label": "Benign|Bot|DDoS|Dos|Prob",
+                          "proba": [...],
+                          "top_k": [{ "index", "label", "prob" }, ...] },
+                        ...
+                      ]
+                    }
+
+GET  /docs        Swagger interactive docs. The bottom "Schemas" section
+                  is hidden by configuration to keep the page focused.
+
+GET  /health      Liveness probe: {"status": "ok"}.
+
+NOTE: The /info, /features, /predict_batch and /predict_csv endpoints
+from the v0.1 API have been removed. Their functionality is fully covered
+by the new /predict (CSV upload = batch; comma-separated string = single
+row), and the feature/class metadata is now baked into the web UI page.
